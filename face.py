@@ -1,12 +1,17 @@
 import message as Message
 import helper as Helper
 import cv2
-import dlib
+import mediapipe as mp
 import numpy as np
 from PIL import Image, ImageDraw
 
 from skimage.io import imread, imshow
 from skimage.filters import prewitt_h, prewitt_v
+
+# Initialize MediaPipe
+mp_face_mesh = mp.solutions.face_mesh
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
 
 # Global variables initialization
 mouthPoints = None
@@ -49,26 +54,60 @@ def mouthDetection(file_path):
     global mouth_center_y2, mouth_center_y3, eyes_center_x, eyes_center_y, img
 
     img = cv2.imread(file_path)
-    detector = dlib.get_frontal_face_detector()
-    predetector = dlib.shape_predictor("setup/data.dat")
-    dets = detector(img, 1)
     
-    if len(dets) == 0:
-        raise Exception("No face detected in the image")
+    # Convert BGR to RGB for MediaPipe
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
-    for k, d in enumerate(dets):
-        shape = predetector(img, d)
-        xmouthpoints = [shape.part(x).x for x in range(60, 68)]
-        ymouthpoints = [shape.part(x).y for x in range(60, 68)]
-
-    eyes_center_x = shape.part(27).x
-    eyes_center_y = shape.part(27).y
-    mouth_center_x = shape.part(62).x
-    mouth_center_y = int((shape.part(66).y - shape.part(62).y) / 2) + shape.part(62).y
-    mouth_center_y2 = shape.part(62).y
-    mouth_center_y3 = shape.part(66).y
-    mouth_left_x = shape.part(48).x
-    mouth_right_x = shape.part(54).x
+    # Initialize MediaPipe Face Mesh
+    with mp_face_mesh.FaceMesh(
+        static_image_mode=True,
+        max_num_faces=1,
+        refine_landmarks=True,
+        min_detection_confidence=0.5
+    ) as face_mesh:
+        results = face_mesh.process(img_rgb)
+        
+        if not results.multi_face_landmarks:
+            raise Exception("No face detected in the image")
+        
+        # Get the first face landmarks
+        face_landmarks = results.multi_face_landmarks[0]
+        
+        # MediaPipe face mesh has 468 landmarks
+        # Mouth landmarks (approximate mapping from dlib's 68-point model)
+        # Inner mouth points (60-67 in dlib) correspond to MediaPipe landmarks around 61, 84, 17, 314, 405, 320, 307, 375
+        mouth_landmarks = [61, 84, 17, 314, 405, 320, 307, 375]
+        
+        # Extract mouth points
+        xmouthpoints = []
+        ymouthpoints = []
+        for landmark_id in mouth_landmarks:
+            landmark = face_landmarks.landmark[landmark_id]
+            x = int(landmark.x * img.shape[1])
+            y = int(landmark.y * img.shape[0])
+            xmouthpoints.append(x)
+            ymouthpoints.append(y)
+        
+        # Get eye center (between left and right eye)
+        left_eye = face_landmarks.landmark[33]  # Left eye center
+        right_eye = face_landmarks.landmark[263]  # Right eye center
+        eyes_center_x = int((left_eye.x + right_eye.x) * img.shape[1] / 2)
+        eyes_center_y = int((left_eye.y + right_eye.y) * img.shape[0] / 2)
+        
+        # Get mouth center and boundaries
+        # Mouth center (between upper and lower lip)
+        upper_lip = face_landmarks.landmark[13]  # Upper lip center
+        lower_lip = face_landmarks.landmark[14]  # Lower lip center
+        mouth_center_x = int((upper_lip.x + lower_lip.x) * img.shape[1] / 2)
+        mouth_center_y = int((upper_lip.y + lower_lip.y) * img.shape[0] / 2)
+        mouth_center_y2 = int(upper_lip.y * img.shape[0])
+        mouth_center_y3 = int(lower_lip.y * img.shape[0])
+        
+        # Mouth left and right boundaries
+        mouth_left = face_landmarks.landmark[61]  # Left corner of mouth
+        mouth_right = face_landmarks.landmark[291]  # Right corner of mouth
+        mouth_left_x = int(mouth_left.x * img.shape[1])
+        mouth_right_x = int(mouth_right.x * img.shape[1])
 
     pts = []
     for i in range(0, 8):
