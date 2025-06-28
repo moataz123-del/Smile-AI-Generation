@@ -1,6 +1,6 @@
+opencv-python-headless
 mediapipe
 Pillow
 Flask
 streamlit
-opencv-python-headless
 scikit-image
