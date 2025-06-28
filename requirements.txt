@@ -1,7 +1,5 @@
-mediapipe==0.10.8
-Pillow==9.0.0
-scikit_image==0.19.0
-skimage==0.0
+mediapipe
+Pillow
 Flask
 streamlit
 opencv-python==4.8.1.78
